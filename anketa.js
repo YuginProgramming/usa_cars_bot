@@ -1,149 +1,141 @@
-import bot from "./app.js";
+import { bot } from "./app.js";
 import { dataBot } from './values.js';
 import axios from 'axios';
-
-import { allData, formattedMessages } from './filter.js';
+import { filterCars } from './filter.js';
+import { phrases, keyboards, submitBudget, submitYear, budget, year } from './leguage.js';
+import fs from 'fs';
 
 let customerPhone;
 let customerName;
-let budget;
-let year;
+let cars;
+let carsData;
+let customers = [];
 
-const phrases = {
-    greetings: 'Вітаємо ! Це чат-бот компанії "AutoCar - Авто зі США" 🇺🇸',
-    contactRequest: 'Нам потрібні ваші контактні дані. Отримати з контактних даних телеграм?',
-    dataConfirmation: `Ваш номер телефону: ${customerPhone}. Ваше імя ${customerName}. Дані вірні?`,
-    thanksForOrder: `Ваші дані відправлені. Дякуємо ${customerName} за звернення. Менеджер звʼяжеться з Вами найближчим часом.`,
-    phoneRequest: 'Введіть ваш номер телефону, та відправте повідомлення',
-    bugetQuestion: 'В який, приблизно, бюджет Вам підібрати автомобіль?',
-    yearQuestion: 'Яких років Вам підібрати автомобіль?',
-    confirmation: `✅ Дані підтверджено. Обрано сегмент підбору ${budget}, ${year}`
-  };
+const sendMessages = async (cars, numberofcar, pictures, chatId) => {
+    numberofcar = numberofcar * 1;
 
-  const keyboards = {
-    startingKeyboard: [['🚙 Підібрати авто', '🚗 Прорахувати авто', '📞 Звʼяжіться зі мною']],
-    contactRequest: [
-      [ { text: 'Так', request_contact: true, } ],
-      ['Ні, я введу номер вручну'],
-      ['/start'],
-    ],
-    dataConfirmation: [
-      ['Так, відправити заявку'],
-      ['Ні, повторити введення'],
-      ['/start'],
-    ],
-    enterPhone: [ ['/start'] ],
-    surveyQuestion1: [['💰7000$ - 10000$', '💰10000$ - 15000$'], 
-    ['💰15000$ - 20000$', '💰+20000']
-  ],
-    surveyQuestion2: [['📅2005-2010', '📅2010-2015'],
-    ['📅2015-2020', '📅2020-2023']],
-    phoneRequest: [['Ввести номер']],
-    budget: [['💵7000$ - 10000$', '💵10000$ - 15000$'], 
-    ['💵15000$ - 20000$', '💵+20000$']]
-  }  
+    try {
+        await bot.sendMessage(chatId, cars[numberofcar], { reply_markup: 
+            keyboards.calculation
+        });      
+    } catch (error) {
+        console.log(error)
+    }
+    if (!cars[numberofcar]) return;
+  try {
+      const response = await axios.get(pictures[numberofcar][6], { responseType: 'arraybuffer' });
+      await bot.sendPhoto(chatId, Buffer.from(response.data), { reply_markup: 
+          { inline_keyboard: [
+              [
+              { text: '<= Попередня', callback_data: numberofcar - 1 },
+              { text: 'Наступна =>', callback_data: numberofcar + 1 }],
+          ]},
+      });
+  } catch (error) {
+      console.log(error);
+  }
+};
 
-export const anketaListiner = async() => {
+
+export const anketaListiner = async () => {
+    bot.on('callback_query', async (query) => {
+        const callback = query.data;
+        const chatId = query.message.chat.id;
+        if (callback == 'offer') {
+            await bot.sendMessage(chatId, phrases.callback, keyboards.sendContact);
+        }
+        if (!carsData) return;
+        if (callback == '/calculation') {
+            bot.sendMessage(dataBot.channelId, `CALCULATION: ${customerPhone}, ${customerName}`);
+            bot.sendMessage(chatId, `✅Вашу заявку на прорахунок прийнято🙌`);
+        } else if (callback == carsData.length) {
+            await sendMessages(cars, 0, carsData, chatId);
+        } else if (callback < 0) {
+            await sendMessages(cars, carsData.length -1, carsData, chatId);
+        } else if (callback >= 0) {
+            await sendMessages(cars, callback, carsData, chatId);
+        }  
+    });
+
     bot.on('message', async (msg) => {
-        let chatId = msg.chat.id;   
-        let customerPhone;
-        let customerName;
+        let chatId = msg.chat.id;
+        const text = msg.text; 
+        const isUser = customers.find((item) =>  item == chatId );  
 
         switch (msg.text) {
             case '/start':
+                if (!isUser) {
+                    const data = fs.readFileSync('./users.txt');
+                    const users = JSON.parse(data);
+                    const isUserInDb = users.find((item) => item == chatId );
+                    if (!isUserInDb) {
+                        customers.push(chatId);
+                        fs.writeFileSync('./users.txt', JSON.stringify(customers));    
+                    }
+                }
                 bot.sendMessage(chatId, phrases.greetings, {
-                    reply_markup: {keyboard: keyboards.startingKeyboard}})
+                    reply_markup: {
+                      keyboard: keyboards.startingKeyboard,
+                      resize_keyboard: true,
+                      one_time_keyboard: true,}})
                 break;
             
             case '🚙 Підібрати авто':
                 bot.sendMessage(chatId, phrases.bugetQuestion, {
-                    reply_markup: {keyboard: keyboards.surveyQuestion1}})
+                    reply_markup: {keyboard: 
+                      keyboards.surveyQuestion1,
+                      resize_keyboard: true,
+                      one_time_keyboard: true,}})
                 break;
             
             case '💰7000$ - 10000$':
-                budget = '7000$ - 10000$';
-                bot.sendMessage(chatId, phrases.yearQuestion, {
-                    reply_markup: {keyboard: keyboards.surveyQuestion2}})
+            case '💰10000$ - 15000$':
+            case '💰15000$ - 20000$':
+            case '💰20000$ - 50000$':
+                await submitBudget(text, chatId);
                 break;
 
-            case '💰10000$ - 15000$':
-
-            case '📅2005-2010':
-                year = '2005 - 2010'
-                bot.sendMessage(chatId, `✅ Дані підтверджено. Обрано сегмент підбору ${budget}, ${year}`, {
-                    reply_markup: {
-                        keyboard: [[{ text: 'Отримати підбірку', request_contact: true }]],
-                        resize_keyboard: true,
-                        one_time_keyboard: true,
-                      }
-                    })
-                break;   
+            case '📅2005 - 2010':
+            case '📅2010 - 2015':
+            case '📅2015 - 2020':
+            case '📅2020 - 2023':
+                await submitYear(text, chatId);
+                break; 
+            case '📞 Звʼяжіться зі мною':
+                bot.sendMessage(chatId, phrases.callback, keyboards.sendContact);
+                break; 
         }
         if (msg.contact) {
-            if(!(budget || year)) return;
             customerPhone = msg.contact.phone_number;
             customerName = msg.contact.first_name;
+            
+            if(!(budget || year)) {
+              bot.sendMessage(dataBot.channelId, `Callback: ${customerPhone} ${customerName}`);
+              return;
+            };
+
             await bot.sendMessage(dataBot.channelId, ` ${customerPhone} ${customerName} ${budget} ${year}`);
-            
-            const filterCars = async (budget, year) => {
                 
-                const [minPrice, maxPrice] = budget.split(' - ').map(str => parseInt(str, 10));
-                
-                const [minYear, maxYear] = year.split(' - ').map(str => parseInt(str, 10));
-                
-                const filterDataByPriceRange = async (minPrice, maxPrice) => {
-                    return allData.filter(column => {
-                      const price = parseInt(column[5], 10);
-                      return !isNaN(price) && price >= minPrice && price <= maxPrice;
-                    });
-                  }; 
+            carsData = await filterCars(budget, year);
 
-                  const filterDataByYearRange = async (minYear, maxYear) => {
+            if (carsData.length === 0) {
+              await bot.sendMessage(chatId, phrases.nodata, keyboards.sendContact);
+              return;
+            };
+
+            cars = carsData.map((lot, index) => {
+                const rowText = 
+                    `🚗 Варіант Авто ${index + 1}\n` +
+                    `✅ Марка/модель: ${lot[0]}\n` +
+                    `✅ Двигун: ${lot[1]}\n` +
+                    `✅ Привід: ${lot[2]}\n` +
+                    `✅ Пробіг: ${lot[3]}\n` +
+                    `✅ Рік: ${lot[4]}\n` +
+                    `💵 Вартість розмитненого авто у Львові: ${lot[5]}\n`;
                     
-                    const priceRangeResult =  await filterDataByPriceRange (minPrice, maxPrice)
-                    
-                    
-                    return priceRangeResult.filter(column => {
-                      const year = parseInt(column[4], 10);
-                      return !isNaN(year) && year >= minYear && year <= maxYear;
-                    });
-                  }; 
-                  const result = await filterDataByYearRange (minYear, maxYear)
-                  console.log(result)
-                  return result
-                }
-            
-
-            const filteredCarMessages = await filterCars(budget, year);
-            
-            const formattedMessages = filteredCarMessages.map((lot, index) => {
-
-            const rowText = 
-            `🚗 Варіант Авто ${index - 1}\n` +
-            `✅ Марка/модель: ${lot[0]}\n` +
-            `✅ Двигун: ${lot[1]}\n` +
-            `✅ Привід: ${lot[2]}\n` +
-            `✅ Пробіг: ${lot[3]}\n` +
-            `✅ Рік: ${lot[4]}\n` +
-            `💲 Ціна в США: ${lot[5]}\n`;
-            
-            return rowText;
-            })
-            //let carMessage = formattedMessages.join('\n');
-
-
-            if (filteredCarMessages.length === 0) {
-            carMessage = 'sorry no data'
-            }
-
-            formattedMessages.forEach( async (lot, index) => {
-                await bot.sendMessage(chatId, lot);
-                const response = await axios.get(filteredCarMessages[index][6], { responseType: 'arraybuffer' });
-                await bot.sendPhoto(chatId, Buffer.from(response.data));
-
-            })
-
-            //await bot.sendMessage(chatId, carMessage);
+                return rowText;
+            });
+            await sendMessages(cars, 0, carsData, chatId);
         }
     })
 }
