@@ -28,16 +28,16 @@ export const subscription = () => {
                 if (data.length === 0) return;
 
                 const response = await axios.get(offer[6], { responseType: 'arraybuffer' });
-
+                
                 const groupSize = 10;
                 for (let i = 0; i < users.length; i += groupSize) {
                     const chatIdsGroup = users.slice(i, i + groupSize);
-                    chatIdsGroup.forEach( el => {
+                    chatIdsGroup.forEach(async el => {
                       try {
 
-                        bot.sendMessage(el, offer[7] );
-                        bot.sendPhoto(chatId, Buffer.from(response.data));
-                        bot.sendMessage(el, offerMessage , { reply_markup: { inline_keyboard: [[{ text: offer[8], callback_data: `offer` }]] } });
+                        await bot.sendMessage(el, offer[7] );
+                        await bot.sendPhoto(el, Buffer.from(response.data));
+                        await bot.sendMessage(el, offerMessage , { reply_markup: { inline_keyboard: [[{ text: offer[8], callback_data: `offer` }]] } });
 
                       } catch (error) {
                         console.log(`USERID: ${el}`);
